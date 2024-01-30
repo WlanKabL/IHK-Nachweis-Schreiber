@@ -162,4 +162,8 @@ dist
 .zip
 *.zip
 
+
+# Interner Firmen schutz
+*-NR*.pdf
+
 # End of https://www.toptal.com/developers/gitignore/api/node,git
