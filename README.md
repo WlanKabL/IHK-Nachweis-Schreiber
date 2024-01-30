@@ -58,3 +58,5 @@ node index.js
 ## Verwendung
 
 Führen Sie das Skript einfach aus, nachdem Sie die `settings` und die Datei- und Ordnerstruktur entsprechend Ihrer Anforderungen konfiguriert haben. Das Skript erzeugt die fehlenden Ausbildungsnachweise automatisch basierend auf den vorgegebenen Daten.
+Basis Eingaben wie der Name, die Nummer des Nachweises oder auch z.B. das Ausbildungsjahr werden automatisch in die PDF eingetragen. Somit muss der Nutzer nurnoch die 3 simplen Felder wie `Betriebliche Tätigkeit`, `Unterweisung` & `Berufsschule` eintragen.
+Dies kann mit Hilfsmitteln wie Jira & Untis "Mein Stundenplan" passieren.
