@@ -25,16 +25,21 @@ Die Dateien und Ordner müssen wie folgt strukturiert sein, damit das Skript kor
 - Hauptordner (angegeben im `ordner` in den `settings`)
     - `1. Jahr`
         - `1Monat - August`
+            - `01.08-05.08-NR1.pdf`
+            - ...
         - `2Monat - September`
         - ...
         - `12Monat - Juli`
     - `2. Jahr`
         - `1Monat - August`
         - ...
-    - ...
     - `Ausbildungsnachweis-Base.pdf`: Vorlage für die Ausbildungsnachweise
 
 Jeder Unterordner für das jeweilige Ausbildungsjahr sollte die Monate enthalten, wie in den `monate` im Skript definiert. Die Vorlage für die Ausbildungsnachweise sollte im Hauptordner unter dem Namen `Ausbildungsnachweis-Base.pdf` gespeichert sein.
+
+## Endgültige PDF-Datei
+
+Das Skript generiert PDF-Dateien, die nach dem Schema `Startdatum-Enddatum-NRNummer.pdf` benannt sind. Zum Beispiel: `01.08-05.08-NR1.pdf`. Die Informationen wie Startdatum, Enddatum, Ausbildungsjahr, Auszubildender, Abteilung und Nummer des Ausbildungsnachweises werden automatisch in die PDF eingetragen.
 
 ## Installation
 
