@@ -266,8 +266,8 @@ async function editPdfFile(pdfToFill, data) {
 }
 
 async function fetchData(school, session, startDate, endDate) {
-    var startString = format(startDate, "yyyy-MM-DDTHH:mm:ss");
-    var endString = format(endDate, "yyyy-MM-DDTHH:mm:ss");
+    var startString = format(startDate, "yyyy-MM-dd'T'HH:mm:ss");
+    var endString = format(endDate, "yyyy-MM-dd'T'HH:mm:ss");
     var elementId = "7134";
     var elementType = "5";
     var homeworkOption = "DUE";
@@ -318,7 +318,12 @@ async function main() {
     );
     var fach = test.su.name;
 
-    fetchData(untis.schoolbase64, untis.sessionInformation.sessionId);
+    fetchData(
+        untis.schoolbase64,
+        untis.sessionInformation.sessionId,
+        new Date("2024-01-24T08:00:00"),
+        new Date("2024-01-25T14:45:00")
+    );
 
     return;
     loadCheckedFiles();
