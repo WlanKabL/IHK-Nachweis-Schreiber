@@ -15,13 +15,13 @@ const {
 
 const untis = new WebUntis(
     "BK-Ahaus",
-    "username",
-    "password",
+    "stec132861",
+    "p27062003s",
     "asopo.webuntis.com"
 );
 
 const settings = {
-    folder: "Path",
+    folder: "C:\\Users\\Phillip Stecher\\Desktop\\Coding\\Githubs\\AusbildungsnachweisSchreiber\\Ausbildungsnachweise",
     startDate: new Date("2022-11-28"),
     schoolUrl: "https://asopo.webuntis.com/timetable-students-my/", //? + {Date}
     workUrl:
@@ -29,6 +29,7 @@ const settings = {
     checkedFilesPath: "gepruefteDateien.txt",
     trainingStartYear: 2021,
 };
+var loginToken = "";
 
 let alreadyCheckedFiles = [];
 
@@ -264,15 +265,18 @@ async function editPdfFile(pdfToFill, data) {
     }
 }
 
-var jwt = "";
+async function fetchData(school, session, startDate, endDate) {
+    var startString = format(startDate, "yyyy-MM-DDTHH:mm:ss");
+    var endString = format(endDate, "yyyy-MM-DDTHH:mm:ss");
+    var elementId = "7134";
+    var elementType = "5";
+    var homeworkOption = "DUE";
 
-async function fetchData(school, session) {
-    const url =
-        "https://asopo.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail?elementId=7134&elementType=5&endDateTime=2024-02-01T10%3A30%3A00&homeworkOption=DUE&startDateTime=2024-02-01T09%3A45%3A00";
+    const url = `https://asopo.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail?elementId=${elementId}&elementType=${elementType}&endDateTime=${endString}&homeworkOption=${homeworkOption}&startDateTime=${startString}`;
     const headers = {
         accept: "application/json, text/plain, */*",
         "accept-language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
-        authorization: `Bearer ${jwt}`,
+        authorization: `Bearer ${loginToken}`,
         "cache-control": "no-cache",
         pragma: "no-cache",
         "sec-ch-ua":
@@ -298,7 +302,10 @@ async function fetchData(school, session) {
 }
 
 async function main() {
+    console.log("Logging in...");
     await untis.login();
+    loginToken = await untis._getJWT(true);
+
     const timetable = await untis.getOwnTimetableForRange(
         new Date("2024-01-22"),
         new Date("2024-01-28")
@@ -310,8 +317,6 @@ async function main() {
         true
     );
     var fach = test.su.name;
-
-    jwt = await untis._getJWT(true);
 
     fetchData(untis.schoolbase64, untis.sessionInformation.sessionId);
 
