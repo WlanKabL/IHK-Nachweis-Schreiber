@@ -1,7 +1,10 @@
 const fs = require("fs");
+var cp = require("child_process");
 const { PDFDocument } = require("pdf-lib");
 const path = require("path");
 const readline = require("readline");
+const { WebUntis } = require("webuntis");
+const axios = require("axios");
 const {
     addDays,
     startOfWeek,
@@ -10,58 +13,66 @@ const {
     getYear,
 } = require("date-fns");
 
+const untis = new WebUntis(
+    "BK-Ahaus",
+    "username",
+    "password",
+    "asopo.webuntis.com"
+);
+
 const settings = {
-    ordner: "C:\\Users\\Phillip Stecher\\Desktop\\Coding\\Githubs\\AusbildungsnachweisSchreiber\\Ausbildungsnachweise",
-    startDatum: new Date("2022-11-28"),
-    schule: "https://asopo.webuntis.com/timetable-students-my/", //? + {Date}
-    arbeit: "http://jira.mediabeam.com/secure/Tempo.jspa#/my-work/week?type=LIST&date=", //? + {Date}
-    gepruefteDateienPfad: "gepruefteDateien.txt",
-    ausbildungsStart: 2021,
+    folder: "Path",
+    startDate: new Date("2022-11-28"),
+    schoolUrl: "https://asopo.webuntis.com/timetable-students-my/", //? + {Date}
+    workUrl:
+        "http://jira.mediabeam.com/secure/Tempo.jspa#/my-work/week?type=LIST&date=", //? + {Date}
+    checkedFilesPath: "gepruefteDateien.txt",
+    trainingStartYear: 2021,
 };
 
-let bereitsGepruefteDateien = [];
+let alreadyCheckedFiles = [];
 
-function ladeGepruefteDateien() {
-    if (fs.existsSync(settings.gepruefteDateienPfad)) {
-        const dateien = fs.readFileSync(settings.gepruefteDateienPfad, "utf8");
-        bereitsGepruefteDateien = dateien.split("\n").filter((line) => line);
+function loadCheckedFiles() {
+    if (fs.existsSync(settings.checkedFilesPath)) {
+        const files = fs.readFileSync(settings.checkedFilesPath, "utf8");
+        alreadyCheckedFiles = files.split("\n").filter((line) => line);
     }
 }
 
-function speichereGepruefteDateien() {
+function saveCheckedFiles() {
     fs.writeFileSync(
-        settings.gepruefteDateienPfad,
-        bereitsGepruefteDateien.join("\n"),
+        settings.checkedFilesPath,
+        alreadyCheckedFiles.join("\n"),
         "utf8"
     );
 }
 
-function extrahiereDatumAusPfad(dateipfad) {
-    const dateiTeile = dateipfad.split("\\");
-    const jahrSegment = dateiTeile[dateiTeile.length - 3]; // "1. Jahr", "2. Jahr", etc.
-    const monatSegment = dateiTeile[dateiTeile.length - 2]; // "11Monat - Juni", etc.
+function extractDateFromPath(filePath) {
+    const fileParts = filePath.split("\\");
+    const yearSegment = fileParts[fileParts.length - 3]; // "1. Jahr", "2. Jahr", etc.
+    const monthSegment = fileParts[fileParts.length - 2]; // "11Monat - Juni", etc.
 
-    const ausbildungsjahr = parseInt(jahrSegment.split(".")[0]);
-    const monatIndex = parseInt(monatSegment.split("Monat")[0]); // Monate sind basierend auf der Liste 'monate'
-    const datumSegment = path.basename(dateipfad).split("-")[0];
-    const [tag, monat] = datumSegment.split(".").map(Number);
+    const trainingYear = parseInt(yearSegment.split(".")[0]);
+    const monthIndex = parseInt(monthSegment.split("Monat")[0]); // Monate sind basierend auf der Liste 'monate'
+    const daySegment = path.basename(filePath).split("-")[0];
+    const [day, month] = daySegment.split(".").map(Number);
 
-    let jahr = settings.ausbildungsStart + ausbildungsjahr - 1;
-    if (monatIndex > 5) {
+    let year = settings.trainingStartYear + trainingYear - 1;
+    if (monthIndex > 5) {
         // Für Monate Januar bis Juli im nächsten Kalenderjahr
-        jahr++;
+        year++;
     }
 
-    return new Date(jahr, monat - 1, tag); // Monate sind 0-basiert in JavaScript
+    return new Date(year, month - 1, day); // Monate sind 0-basiert in JavaScript
 }
 
-async function pruefePdfDatei(dateipfad) {
-    if (bereitsGepruefteDateien.includes(dateipfad)) {
+async function pruefePdfDatei(filePath) {
+    if (alreadyCheckedFiles.includes(path.basename(filePath))) {
         return []; // Überspringe, wenn die Datei bereits geprüft wurde
     }
     try {
-        const pdfDaten = fs.readFileSync(dateipfad);
-        const pdfDoc = await PDFDocument.load(pdfDaten);
+        const pdfData = fs.readFileSync(filePath);
+        const pdfDoc = await PDFDocument.load(pdfData);
 
         // Formular aus der geladenen PDF-Datei holen
         const form = pdfDoc.getForm();
@@ -84,7 +95,7 @@ async function pruefePdfDatei(dateipfad) {
         var field3Empty = !field3;
 
         if (!field1Empty && !field2Empty && !field3Empty) {
-            //! Jump und datei als fertig abspeichern
+            //! Jump und file als fertig abspeichern
             return [];
         } else if (field1Empty && field2Empty && field3Empty) {
             //! Komplett ausfüllen lassen
@@ -94,8 +105,8 @@ async function pruefePdfDatei(dateipfad) {
             return [2];
         } else {
             //! Leeren felder ausfüllen lassen
-            //? Wenn Field1 vollständig dann NICHT "settings.arbeit" anzeigen
-            //? Wenn Field3 vollständig dann nicht "settings.schule" anzeigen
+            //? Wenn Field1 vollständig dann NICHT "settings.workUrl" anzeigen
+            //? Wenn Field3 vollständig dann nicht "settings.schoolUrl" anzeigen
             var result = [];
 
             if (field1Empty) result.push(1);
@@ -104,78 +115,76 @@ async function pruefePdfDatei(dateipfad) {
             return result;
         }
 
-        // console.log(`Geprüft: ${dateipfad}`);
+        // console.log(`Geprüft: ${filePath}`);
     } catch (error) {
-        console.error(`Fehler beim Prüfen der Datei ${dateipfad}:`, error);
+        console.error(`Fehler beim Prüfen der Datei ${filePath}:`, error);
         return [];
     }
 }
 
-async function durchsucheOrdner(ordner) {
-    const dateienZuBearbeiten = [];
-    const fertigeDateien = [];
+async function searchFolder(folder) {
+    const filesToProcess = [];
+    const finishedFiles = [];
 
-    const dateien = fs.readdirSync(ordner);
-    for (const datei of dateien) {
-        const vollerPfad = path.join(ordner, datei);
-        const dateiStatus = fs.lstatSync(vollerPfad);
+    const files = fs.readdirSync(folder);
+    for (const file of files) {
+        const fullPath = path.join(folder, file);
+        const fileStatus = fs.lstatSync(fullPath);
 
-        if (dateiStatus.isDirectory()) {
-            const unterordnerResultate = await durchsucheOrdner(vollerPfad);
-            dateienZuBearbeiten.push(
-                ...unterordnerResultate.dateienZuBearbeiten
-            );
-            fertigeDateien.push(...unterordnerResultate.fertigeDateien);
+        if (fileStatus.isDirectory()) {
+            const subfolderResults = await searchFolder(fullPath);
+            filesToProcess.push(...subfolderResults.filesToProcess);
+            finishedFiles.push(...subfolderResults.finishedFiles);
         } else if (
-            datei.endsWith(".pdf") &&
-            !datei.includes("Ausbildungsnachweis-Base.pdf")
+            file.endsWith(".pdf") &&
+            !file.includes("Ausbildungsnachweis-Base.pdf")
         ) {
-            const pdfResult = await pruefePdfDatei(vollerPfad);
+            const pdfResult = await pruefePdfDatei(fullPath);
             if (pdfResult.length == 0) {
-                fertigeDateien.push(vollerPfad);
+                finishedFiles.push(path.basename(fullPath));
             } else {
-                dateienZuBearbeiten.push({
-                    path: vollerPfad,
+                filesToProcess.push({
+                    path: fullPath,
                     toFill: pdfResult,
                 });
             }
         }
     }
 
-    return { dateienZuBearbeiten, fertigeDateien };
+    return { filesToProcess, finishedFiles };
 }
 
 function generateWorkLink(date) {
-    return `${settings.arbeit}${format(date, "yyyy-MM-dd")}`;
+    return `${settings.workUrl}${format(date, "yyyy-MM-dd")}`;
 }
 
 function generateSchoolLink(date) {
-    return `${settings.schule}${format(date, "yyyy-MM-dd")}`;
+    return `${settings.schoolUrl}${format(date, "yyyy-MM-dd")}`;
 }
 
-function askQuestion(frage, mehrzeilig = false) {
+function askQuestion(question, multiline = false) {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
 
     return new Promise((resolve) => {
-        if (!mehrzeilig) {
-            rl.question(frage, (antwort) => {
+        if (!multiline) {
+            rl.question(question, (answer) => {
                 rl.close();
-                resolve(antwort);
+                resolve(answer);
             });
         } else {
-            console.log(frage);
-            const antworten = [];
+            console.log(question);
+            const answers = [];
             rl.on("line", (line) => {
-                if (line === "\\ende") {
+                if (line === "\\e") {
                     rl.close();
                 } else {
-                    antworten.push(line);
+                    answers.push(line);
                 }
             }).on("close", () => {
-                resolve(antworten.join("\n"));
+                resolve(answers.join("\n"));
             });
         }
     });
@@ -187,12 +196,15 @@ async function getFields(pdfToFill) {
 
     // Beispiel: Frage den Benutzer nach Informationen
     if (pdfToFill.toFill.includes(1)) {
-        result.field1 = await askQuestion("Betriebliche Tätigkeit (beende mit '\\ende'):\n", true);
+        result.field1 = await askQuestion(
+            "Betriebliche Tätigkeit (beende mit '\\e'):",
+            true
+        );
     }
 
     if (pdfToFill.toFill.includes(2)) {
         var filled = await askQuestion(
-            "Unterweisungen (beende mit '\\ende'):\n",
+            "Unterweisungen (beende mit '\\e'):",
             true
         );
 
@@ -205,7 +217,7 @@ async function getFields(pdfToFill) {
 
     if (pdfToFill.toFill.includes(3)) {
         result.field3 = await askQuestion(
-            "Berufsschule (Unterrichtsthemen) (beende mit '\\ende'):\n",
+            "Berufsschule (Unterrichtsthemen) (beende mit '\\e'):",
             true
         );
     }
@@ -252,24 +264,78 @@ async function editPdfFile(pdfToFill, data) {
     }
 }
 
+var jwt = "";
+
+async function fetchData(school, session) {
+    const url =
+        "https://asopo.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail?elementId=7134&elementType=5&endDateTime=2024-02-01T10%3A30%3A00&homeworkOption=DUE&startDateTime=2024-02-01T09%3A45%3A00";
+    const headers = {
+        accept: "application/json, text/plain, */*",
+        "accept-language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+        authorization: `Bearer ${jwt}`,
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+        "sec-ch-ua":
+            '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "x-webuntis-api-school-year-id": "25",
+        cookie: `schoolname="${school}"; JSESSIONID=${session}`,
+        Referer:
+            "https://asopo.webuntis.com/timetable-students-my/2024-02-01/modal/details/2017161/false/7134/5/2024-02-01T09%3A45%3A00%2B01%3A00/2024-02-01T10%3A30%3A00%2B01%3A00/details",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    };
+
+    try {
+        const response = await axios.get(url, { headers });
+        console.log(response.data.calendarEntries);
+    } catch (error) {
+        console.error("Error fetching data:", error);
+    }
+}
+
 async function main() {
-    ladeGepruefteDateien();
-
-    const { dateienZuBearbeiten, fertigeDateien } = await durchsucheOrdner(
-        settings.ordner
+    await untis.login();
+    const timetable = await untis.getOwnTimetableForRange(
+        new Date("2024-01-22"),
+        new Date("2024-01-28")
     );
-    // console.log("Fertige Dateien:", fertigeDateien);
+    var test = timetable[3];
+    var abc = await untis.getHomeWorkAndLessons(
+        new Date("2024-01-22"),
+        new Date("2024-01-28"),
+        true
+    );
+    var fach = test.su.name;
 
-    bereitsGepruefteDateien = fertigeDateien;
-    speichereGepruefteDateien();
+    jwt = await untis._getJWT(true);
 
-    // console.log("Zu bearbeitende Dateien:", dateienZuBearbeiten);
+    fetchData(untis.schoolbase64, untis.sessionInformation.sessionId);
+
+    return;
+    loadCheckedFiles();
+
+    const { filesToProcess, finishedFiles } = await searchFolder(
+        settings.folder
+    );
+    // console.log("Fertige Dateien:", finishedFiles);
+
+    alreadyCheckedFiles = finishedFiles;
+    saveCheckedFiles();
+
+    // console.log("Zu bearbeitende Dateien:", filesToProcess);
     //! Show interface
-    for (const pdfToFill of dateienZuBearbeiten) {
-        // console.clear();
+    console.clear();
+    process.stdout.write("clear");
+    cp.execSync("clear");
+    for (const pdfToFill of filesToProcess) {
+        console.clear();
 
-        var wocheStartDatum = extrahiereDatumAusPfad(pdfToFill.path);
-        console.log("Nachweis: " + format(wocheStartDatum, "dd.MM.yyyy"));
+        var weekStartDate = extractDateFromPath(pdfToFill.path);
+        console.log("Nachweis: " + format(weekStartDate, "dd.MM.yyyy"));
         console.log("\n");
 
         var data;
@@ -281,12 +347,12 @@ async function main() {
             // generate links to click
             console.log("Links:");
             if (pdfToFill.toFill.includes(1)) {
-                console.log(generateWorkLink(wocheStartDatum));
+                console.log(generateWorkLink(weekStartDate));
             }
             if (pdfToFill.toFill.includes(3)) {
-                console.log(generateSchoolLink(wocheStartDatum));
+                console.log(generateSchoolLink(weekStartDate));
             }
-            console.log("\n");
+            console.log("");
             // Get Information from user
             data = await getFields(pdfToFill);
 
@@ -305,15 +371,15 @@ async function main() {
         }
 
         // Write Information to pdf
-        const erfolg = await editPdfFile(pdfToFill, data);
+        const editSuccess = await editPdfFile(pdfToFill, data);
 
         // Save pdf
 
-        // Save as finished pdf to settings.gepruefteDateienPfad with APPEND for performence!!!
-        if (erfolg) {
+        // Save as finished pdf to settings.checkedFilesPath with APPEND for performence!!!
+        if (editSuccess) {
             fs.appendFileSync(
-                settings.gepruefteDateienPfad,
-                `\n${pdfToFill.path}`
+                settings.checkedFilesPath,
+                `\n${path.basename(pdfToFill.path)}`
             );
         }
     }
