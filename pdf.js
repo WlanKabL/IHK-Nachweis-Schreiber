@@ -45,9 +45,9 @@ async function fillPdf() {
     fs.writeFileSync("./Filled_PDF_TEST.pdf", pdfBytes);
 }
 
-fillPdf().catch((err) => {
-    console.error("Error filling PDF:", err);
-});
+// fillPdf().catch((err) => {
+//     console.error("Error filling PDF:", err);
+// });
 
 async function printFieldNames() {
     const pdfDoc = await PDFDocument.load(fs.readFileSync("./PDF_TEST.pdf"));
@@ -58,6 +58,6 @@ async function printFieldNames() {
     });
 }
 
-// printFieldNames().catch((err) => {
-//     console.error("Error reading PDF:", err);
-// });
+printFieldNames().catch((err) => {
+    console.error("Error reading PDF:", err);
+});
