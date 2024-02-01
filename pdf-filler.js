@@ -295,7 +295,7 @@ async function fetchData(school, session, startDate, endDate) {
 
     try {
         const response = await axios.get(url, { headers });
-        console.log(response.data.calendarEntries);
+        return response.data;
     } catch (error) {
         console.error("Error fetching data:", error);
     }
@@ -305,6 +305,20 @@ async function main() {
     console.log("Logging in...");
     await untis.login();
     loginToken = await untis._getJWT(true);
+
+    console.log("Parsing files...");
+    loadCheckedFiles();
+
+    const { filesToProcess, finishedFiles } = await searchFolder(
+        settings.folder
+    );
+
+    console.log("Fertige Dateien:", finishedFiles.length);
+    console.log("Zu bearbeitende Dateien:", filesToProcess.map(f => f.path));
+
+
+    var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
+
 
     const timetable = await untis.getOwnTimetableForRange(
         new Date("2024-01-22"),
@@ -318,25 +332,20 @@ async function main() {
     );
     var fach = test.su.name;
 
-    fetchData(
+    var data = await fetchData(
         untis.schoolbase64,
         untis.sessionInformation.sessionId,
-        new Date("2024-01-24T08:00:00"),
-        new Date("2024-01-25T14:45:00")
-    );
+        new Date("2024-01-24T00:00:00"),
+        new Date("2024-01-25T23:59:59")
+    ).catch(console.error);
+
+    // console.log(data);
 
     return;
-    loadCheckedFiles();
-
-    const { filesToProcess, finishedFiles } = await searchFolder(
-        settings.folder
-    );
-    // console.log("Fertige Dateien:", finishedFiles);
 
     alreadyCheckedFiles = finishedFiles;
     saveCheckedFiles();
 
-    // console.log("Zu bearbeitende Dateien:", filesToProcess);
     //! Show interface
     console.clear();
     process.stdout.write("clear");
