@@ -55,16 +55,28 @@ function extractDateFromPath(filePath) {
 
     const trainingYear = parseInt(yearSegment.split(".")[0]);
     const monthIndex = parseInt(monthSegment.split("Monat")[0]); // Monate sind basierend auf der Liste 'monate'
-    const daySegment = path.basename(filePath).split("-")[0];
-    const [day, month] = daySegment.split(".").map(Number);
+    const dateSegment = path.basename(filePath).split("-")[0];
+    const endDateSegment = path
+        .basename(filePath)
+        .split("-")[1]
+        .split("-NR")[0];
+    const [day, month] = dateSegment.split(".").map(Number);
+    const [endDay, endMonth] = endDateSegment.split(".").map(Number);
 
     let year = settings.trainingStartYear + trainingYear - 1;
+    let endYear = year;
     if (monthIndex > 5) {
         // Für Monate Januar bis Juli im nächsten Kalenderjahr
         year++;
     }
+    if (monthIndex > 5 && endMonth <= 7) {
+        endYear++;
+    }
 
-    return new Date(year, month - 1, day); // Monate sind 0-basiert in JavaScript
+    return {
+        weekStartDate: new Date(year, month - 1, day),
+        weekEndDate: new Date(endYear, endMonth - 1, endDay),
+    };
 }
 
 async function pruefePdfDatei(filePath) {
@@ -192,7 +204,6 @@ function askQuestion(question, multiline = false) {
 }
 
 async function getFields(pdfToFill) {
-    // console.log(`Bearbeite: ${pdfToFill.path}`);
     var result = {};
 
     // Beispiel: Frage den Benutzer nach Informationen
@@ -208,19 +219,28 @@ async function getFields(pdfToFill) {
             "Unterweisungen (beende mit '\\e'):",
             true
         );
-
-        if (!filled) {
-            result.field2 = "-";
-        } else {
-            result.field2 = filled;
-        }
+        result.field2 = filled.trim() || "-";
     }
 
     if (pdfToFill.toFill.includes(3)) {
-        result.field3 = await askQuestion(
-            "Berufsschule (Unterrichtsthemen) (beende mit '\\e'):",
-            true
+        //! Automatic / Manuell toggle
+        var automaticToggle = await askQuestion(
+            "Berufsschule ([Default] Automatic | [M] Manuell):\n"
         );
+
+        if (automaticToggle.toLowerCase().trim() == "m") {
+            result.field3 = await askQuestion(
+                "Berufsschule (Unterrichtsthemen) (beende mit '\\e'):",
+                true
+            );
+        } else {
+            var calendarEntries = await getTeachingContent(
+                format(pdfToFill.startDate, "yyyy.MM.dd"),
+                format(pdfToFill.endDate, "yyyy.MM.dd")
+            );
+            // console.log(calendarEntries);
+            result.field3 = calendarEntries;
+        }
     }
 
     return result;
@@ -301,28 +321,39 @@ async function fetchData(school, session, startDate, endDate) {
     }
 }
 
-async function main() {
-    console.log("Logging in...");
-    await untis.login();
-    loginToken = await untis._getJWT(true);
+function convertArrayToString(calendarEntries) {
+    const subjectContents = {};
 
-    console.log("Parsing files...");
-    loadCheckedFiles();
+    // Organisiere die Einträge nach Fächern
+    calendarEntries.forEach((entry) => {
+        if (!subjectContents[entry.subject]) {
+            subjectContents[entry.subject] = [];
+        }
+        subjectContents[entry.subject].push(entry.teachingContent);
+    });
 
-    const { filesToProcess, finishedFiles } = await searchFolder(
-        settings.folder
-    );
+    // Konvertiere das Objekt in einen String
+    let resultString = "";
+    for (const [subject, contents] of Object.entries(subjectContents)) {
+        // Füge den Fachnamen hinzu
+        resultString += `${subject}:\n`;
 
-    console.log("Fertige Dateien:", finishedFiles.length);
-    console.log("Zu bearbeitende Dateien:", filesToProcess.length);
+        if (contents.length > 1) {
+            // Mehrere Einträge für das Fach vorhanden, füge sie getrennt hinzu
+            resultString += `${contents.join("\n")}\n`;
+        } else {
+            // Nur ein Eintrag vorhanden, füge ihn direkt hinzu
+            resultString += `${contents[0]}\n`;
+        }
+    }
 
-    // var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
+    return resultString.trim(); // Entferne zusätzliche Leerzeichen am Ende des Strings
+}
 
+async function getTeachingContent(start, end) {
     const timetable = await untis.getOwnTimetableForRange(
-        // new Date("2024-01-22"), //Week Start
-        // new Date("2024-01-28") // Wekk end
-        new Date("2024-01-29"), //Week Start
-        new Date("2024-02-02") // Wekk end
+        new Date(start), //Week Start
+        new Date(end) // Wekk end
     );
 
     // Filtern Sie abgesagte Termine und extrahieren Sie die Daten
@@ -363,31 +394,23 @@ async function main() {
         }
     });
 
-    console.log(JSON.stringify(dateGroups, null, 4) + "\n");
+    var allCalendarEntries = [];
 
-    // var test = timetable[3];
-    // var abc = await untis.getHomeWorkAndLessons(
-    //     new Date("2024-01-22"),
-    //     new Date("2024-01-28"),
-    //     true
-    // );
-    // var fach = test.su.name;
-    
-    var startTime = dateGroups[0][0];
-    var endTime = dateGroups[0][1] || dateGroups[0][0];
+    for (var date of uniqueDates) {
+        var data = await fetchData(
+            untis.schoolbase64,
+            untis.sessionInformation.sessionId,
+            new Date(`${date}T00:00:00`),
+            new Date(`${date}T23:59:59`)
+        ).catch(console.error);
 
-    var data = await fetchData(
-        untis.schoolbase64,
-        untis.sessionInformation.sessionId,
-        new Date(`${startTime}T00:00:00`),
-        new Date(`${endTime}T23:59:59`)
-    ).catch(console.error);
+        if (data && data.calendarEntries) {
+            allCalendarEntries.push(...data.calendarEntries);
+        }
+    }
 
-    //* Rauslöschen wenn: data.calendarEntries[x].status == "CANCELLED"
-    //* Unterrichtsfach: data.calendarEntries[x].subject => .shortName or .displayName /
-    //* Tätigkeit im Unterricht: data.calendarEntries[x] => .teachingContent or .notesAll
     // Filtern der abgesagten Termine
-    const calendarEntries = data.calendarEntries
+    const calendarEntries = allCalendarEntries
         .filter((entry) => entry.status !== "CANCELLED")
         .map((entry) => {
             return {
@@ -395,28 +418,56 @@ async function main() {
                     ? entry.subject.shortName || entry.subject.displayName
                     : "Unbekannt",
                 teachingContent:
-                    entry.teachingContent || entry.notesAll || "Keine Inhalte",
+                    entry.teachingContent || entry.notesAll || "Keine Inhalte abrufbar.",
             };
         });
 
-    console.log(calendarEntries);
+    return convertArrayToString(calendarEntries);
+}
 
-    return;
+async function main() {
+    console.log("Logging in...");
+    await untis.login();
+    loginToken = await untis._getJWT(true);
+
+    console.log("Parsing files...");
+    loadCheckedFiles();
+
+    const { filesToProcess, finishedFiles } = await searchFolder(
+        settings.folder
+    );
+
+    console.log("Fertige Dateien:", finishedFiles.length);
+    console.log("Zu bearbeitende Dateien:", filesToProcess.length);
+
+    // var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
 
     alreadyCheckedFiles = finishedFiles;
     saveCheckedFiles();
 
     //! Show interface
-    console.clear();
-    process.stdout.write("clear");
-    cp.execSync("clear");
+    // console.clear();
+    // process.stdout.write("clear");
+    // cp.execSync("clear");
     for (const pdfToFill of filesToProcess) {
         console.clear();
 
-        var weekStartDate = extractDateFromPath(pdfToFill.path);
-        console.log("Nachweis: " + format(weekStartDate, "dd.MM.yyyy"));
-        console.log("\n");
+        var { weekStartDate, weekEndDate } = extractDateFromPath(
+            pdfToFill.path
+        );
+        // var weekStartDate = new Date("2024-01-22");
+        // var weekEndDate = new Date("2024-01-26");
 
+        pdfToFill.startDate = weekStartDate;
+        pdfToFill.endDate = weekEndDate;
+
+        console.log(
+            `Nachweis: ${format(weekStartDate, "dd.MM.yyyy")} - ${format(
+                weekEndDate,
+                "dd.MM.yyyy"
+            )}`
+        );
+        console.log("\n");
         var data;
         if (pdfToFill.toFill.length == 1 && pdfToFill.toFill[0] === 2) {
             data = {
