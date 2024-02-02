@@ -314,32 +314,92 @@ async function main() {
     );
 
     console.log("Fertige Dateien:", finishedFiles.length);
-    console.log("Zu bearbeitende Dateien:", filesToProcess.map(f => f.path));
+    console.log("Zu bearbeitende Dateien:", filesToProcess.length);
 
-
-    var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
-
+    // var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
 
     const timetable = await untis.getOwnTimetableForRange(
-        new Date("2024-01-22"),
-        new Date("2024-01-28")
+        // new Date("2024-01-22"), //Week Start
+        // new Date("2024-01-28") // Wekk end
+        new Date("2024-01-29"), //Week Start
+        new Date("2024-02-02") // Wekk end
     );
-    var test = timetable[3];
-    var abc = await untis.getHomeWorkAndLessons(
-        new Date("2024-01-22"),
-        new Date("2024-01-28"),
-        true
-    );
-    var fach = test.su.name;
+
+    // Filtern Sie abgesagte Termine und extrahieren Sie die Daten
+    var dateList = timetable
+        .filter((t) => t.code !== "cancelled")
+        .map((t) => {
+            let date = t.date.toString();
+            return `${date.substr(0, 4)}-${date.substr(4, 2)}-${date.substr(
+                6,
+                2
+            )}`;
+        });
+
+    // Entfernen Sie Duplikate
+    var uniqueDates = [...new Set(dateList)];
+    uniqueDates.sort();
+
+    // Gruppieren Sie die Daten basierend auf ihrer zeitlichen Nähe
+    var dateGroups = [];
+    var currentGroups = [];
+
+    uniqueDates.forEach((date, index) => {
+        var dateObject = new Date(date);
+
+        if (
+            !currentGroups.length ||
+            dateObject - new Date(currentGroups[currentGroups.length - 1]) <=
+                2 * 24 * 60 * 60 * 1000
+        ) {
+            currentGroups.push(date);
+        } else {
+            dateGroups.push(currentGroups);
+            currentGroups = [date];
+        }
+
+        if (index === uniqueDates.length - 1) {
+            dateGroups.push(currentGroups);
+        }
+    });
+
+    console.log(JSON.stringify(dateGroups, null, 4) + "\n");
+
+    // var test = timetable[3];
+    // var abc = await untis.getHomeWorkAndLessons(
+    //     new Date("2024-01-22"),
+    //     new Date("2024-01-28"),
+    //     true
+    // );
+    // var fach = test.su.name;
+    
+    var startTime = dateGroups[0][0];
+    var endTime = dateGroups[0][1] || dateGroups[0][0];
 
     var data = await fetchData(
         untis.schoolbase64,
         untis.sessionInformation.sessionId,
-        new Date("2024-01-24T00:00:00"),
-        new Date("2024-01-25T23:59:59")
+        new Date(`${startTime}T00:00:00`),
+        new Date(`${endTime}T23:59:59`)
     ).catch(console.error);
 
-    // console.log(data);
+    //* Rauslöschen wenn: data.calendarEntries[x].status == "CANCELLED"
+    //* Unterrichtsfach: data.calendarEntries[x].subject => .shortName or .displayName /
+    //* Tätigkeit im Unterricht: data.calendarEntries[x] => .teachingContent or .notesAll
+    // Filtern der abgesagten Termine
+    const calendarEntries = data.calendarEntries
+        .filter((entry) => entry.status !== "CANCELLED")
+        .map((entry) => {
+            return {
+                subject: entry.subject
+                    ? entry.subject.shortName || entry.subject.displayName
+                    : "Unbekannt",
+                teachingContent:
+                    entry.teachingContent || entry.notesAll || "Keine Inhalte",
+            };
+        });
+
+    console.log(calendarEntries);
 
     return;
 
