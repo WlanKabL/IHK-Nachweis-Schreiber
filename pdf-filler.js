@@ -12,6 +12,7 @@ const {
     format,
     getYear,
 } = require("date-fns");
+const { time } = require("console");
 
 const untis = new WebUntis(
     "BK-Ahaus",
@@ -238,8 +239,15 @@ async function getFields(pdfToFill) {
                 format(pdfToFill.startDate, "yyyy.MM.dd"),
                 format(pdfToFill.endDate, "yyyy.MM.dd")
             );
-            // console.log(calendarEntries);
-            result.field3 = calendarEntries;
+
+            if (!calendarEntries.trim()) {
+                result.field3 = await askQuestion(
+                    "Berufsschule (Unterrichtsthemen) (beende mit '\\e'):",
+                    true
+                );
+            } else {
+                result.field3 = calendarEntries;
+            }
         }
     }
 
@@ -255,7 +263,11 @@ async function editPdfFile(pdfToFill, data) {
         // Setze die Werte in die PDF-Formularfelder
         if (data.field1) {
             var field = form.getTextField("Betriebliche Tätigkeit");
-            field.setFontSize(12);
+            if (data.field1.length >= 350) {
+                field.setFontSize(9);
+            } else {
+                field.setFontSize(12);
+            }
             field.setText(data.field1);
         }
         if (data.field2) {
@@ -267,7 +279,13 @@ async function editPdfFile(pdfToFill, data) {
         }
         if (data.field3) {
             var field = form.getTextField("Berufsschule - Unterrichtsthemen");
-            field.setFontSize(12);
+
+            if (data.field3.length >= 350) {
+                field.setFontSize(9);
+            } else {
+                field.setFontSize(12);
+            }
+
             field.setText(data.field3);
         }
 
@@ -351,10 +369,21 @@ function convertArrayToString(calendarEntries) {
 }
 
 async function getTeachingContent(start, end) {
-    const timetable = await untis.getOwnTimetableForRange(
-        new Date(start), //Week Start
-        new Date(end) // Wekk end
-    );
+    var timetable = [];
+    try {
+        var tempTimetable = await untis.getOwnTimetableForRange(
+            new Date(start), //Week Start
+            new Date(end) // Wekk end
+        );
+
+        if (tempTimetable) timetable = tempTimetable;
+    } catch (e) {
+        return "Keine Berufsschule";
+    }
+
+    // console.log(timetable);
+
+    if (!timetable || timetable.length == 0) return "Keine Berufsschule";
 
     // Filtern Sie abgesagte Termine und extrahieren Sie die Daten
     var dateList = timetable
@@ -369,6 +398,7 @@ async function getTeachingContent(start, end) {
 
     // Entfernen Sie Duplikate
     var uniqueDates = [...new Set(dateList)];
+    if (!uniqueDates || uniqueDates.length == 0) return "Keine Berufsschule";
     uniqueDates.sort();
 
     // Gruppieren Sie die Daten basierend auf ihrer zeitlichen Nähe
@@ -418,7 +448,9 @@ async function getTeachingContent(start, end) {
                     ? entry.subject.shortName || entry.subject.displayName
                     : "Unbekannt",
                 teachingContent:
-                    entry.teachingContent || entry.notesAll || "Keine Inhalte abrufbar.",
+                    entry.teachingContent ||
+                    entry.notesAll ||
+                    "Keine Inhalte abrufbar.",
             };
         });
 
@@ -440,7 +472,7 @@ async function main() {
     console.log("Fertige Dateien:", finishedFiles.length);
     console.log("Zu bearbeitende Dateien:", filesToProcess.length);
 
-    // var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
+    var awnser = await askQuestion("[C] Continue | [P] Print Tree:\n");
 
     alreadyCheckedFiles = finishedFiles;
     saveCheckedFiles();
@@ -455,8 +487,8 @@ async function main() {
         var { weekStartDate, weekEndDate } = extractDateFromPath(
             pdfToFill.path
         );
-        // var weekStartDate = new Date("2024-01-22");
-        // var weekEndDate = new Date("2024-01-26");
+        // var weekStartDate = new Date("2023-06-26");
+        // var weekEndDate = new Date("2023-06-30");
 
         pdfToFill.startDate = weekStartDate;
         pdfToFill.endDate = weekEndDate;
@@ -513,6 +545,7 @@ async function main() {
             );
         }
     }
+    var a = await askQuestion("Done");
 }
 
 main().catch(console.error);
