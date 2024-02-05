@@ -12,9 +12,9 @@ const {
 const settings = {
     dauer: 3,
     startYear: 2021,
-    benutzer: "Mustermann, Max",
-    abteilung: "Aufn Bau nh",
-    ordner: "C:\\Users\\Mustermann\\Path\\To\\Folder"
+    benutzer: "Stecher, Philipp",
+    abteilung: "Anwendungsentwicklung",
+    ordner: "C:\\Users\\Phillip Stecher\\Desktop\\Coding\\Githubs\\AusbildungsnachweisSchreiber\\Ausbildungsnachweise",
 };
 
 const monate = [
@@ -33,11 +33,11 @@ const monate = [
 ];
 
 function findeLetztesDatumUndNummer() {
-    let letztesDatum = new Date(); // 25. November 2022
+    let letztesDatum = new Date("2024-01-29"); // 25. November 2022
     let letzteNummer = 0;
 
     for (var year = 0; year < settings.dauer; year++) {
-        monate.forEach((monat) => {
+        monate.forEach((monat, index) => {
             const ordnerPfad = path.join(
                 settings.ordner,
                 year + 1 + ". Jahr",
@@ -57,13 +57,17 @@ function findeLetztesDatumUndNummer() {
                             letzteNummer = nummer;
                             // Datum aus dem Dateinamen extrahieren
                             const datumsTeil = teile[0].split("-");
-
                             const endDatum = datumsTeil[1];
-
                             const endDatumSplit = endDatum.split(".");
 
+                            var jahr = settings.startYear + year;
+                            if ((index + 1) > 5) {
+                                // Monate Januar bis Juli
+                                jahr++;
+                            }
+
                             letztesDatum = new Date(
-                                settings.startYear + year,
+                                jahr,
                                 endDatumSplit[1] - 1,
                                 endDatumSplit[0]
                             );
@@ -90,7 +94,6 @@ function berechneFehlendeWochen(letztesDatum, letzteNummer) {
         end: heute,
     });
 
-    
     wochenintervalle.shift();
 
     return wochenintervalle.map((woche, index) => {
@@ -119,10 +122,7 @@ function berechneFehlendeWochen(letztesDatum, letzteNummer) {
 }
 
 function kopiereUndBenenneUm(woche) {
-    const quelle = path.join(
-        settings.ordner,
-        `Ausbildungsnachweis-Base.pdf`
-    );
+    const quelle = path.join(settings.ordner, `Ausbildungsnachweis-Base.pdf`);
     const zielOrdner = path.join(
         settings.ordner,
         woche.jahrOrdner,
@@ -139,7 +139,7 @@ async function fillPdf(source, target, data) {
         const pdfDoc = await PDFDocument.load(fs.readFileSync(source));
         const form = pdfDoc.getForm();
 
-        form.getTextField("Text3").setText(settings.benutzerName);
+        form.getTextField("Text3").setText(settings.benutzer);
         form.getTextField("Ausbildungsnachweis Nr").setText(
             data.nummer.toString()
         );
@@ -160,6 +160,7 @@ async function fillPdf(source, target, data) {
             `${data.endDatum}.${data.endJahr}`
         );
 
+        // console.log(target);
         fs.writeFileSync(target, await pdfDoc.save());
     } catch (error) {
         console.error("Error filling PDF:", error);
